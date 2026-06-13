@@ -41,6 +41,56 @@ def pct(value: float) -> str:
     return f"{value:,.2f}%".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def rango_eje_con_margen(values: pd.Series, padding_ratio: float = 0.18, min_span: float = 1.0) -> list[float] | None:
+    clean = pd.to_numeric(values, errors="coerce").dropna()
+    if clean.empty:
+        return None
+    minimum = float(clean.min())
+    maximum = float(clean.max())
+    span = max(maximum - minimum, min_span)
+    padding = span * padding_ratio
+    return [minimum - padding, maximum + padding]
+
+
+def agregar_labels_barras(fig, orientation: str = "v"):
+    axis_value = "x" if orientation == "h" else "y"
+    fig.update_traces(
+        texttemplate=f"%{{{axis_value}:.1f}}%",
+        textposition="outside",
+        cliponaxis=False,
+        hovertemplate="%{label}<br>Variacion: %{value:.2f}%<extra></extra>",
+    )
+    fig.update_layout(uniformtext_minsize=10, uniformtext_mode="hide")
+    return fig
+
+
+def agregar_labels_linea(fig):
+    fig.update_traces(
+        mode="lines+markers+text",
+        texttemplate="%{y:.1f}%",
+        textposition="top center",
+        cliponaxis=False,
+        hovertemplate="%{x|%Y-%m}<br>Variacion acumulada: %{y:.2f}%<extra></extra>",
+    )
+    fig.update_layout(uniformtext_minsize=9, uniformtext_mode="hide")
+    return fig
+
+
+def aplicar_rango_linea(fig, values: pd.Series):
+    axis_range = rango_eje_con_margen(values, padding_ratio=0.12, min_span=5.0)
+    if axis_range:
+        fig.update_yaxes(range=axis_range)
+    return fig
+
+
+def normalizar_linea_comparador(fig):
+    fig.update_traces(
+        mode="lines+markers",
+        hovertemplate="%{x|%Y-%m}<br>Variacion acumulada: %{y:.2f}%<extra></extra>",
+    )
+    return fig
+
+
 def fuente_desde_detalle(detalle: str) -> str:
     return DETALLE_A_FUENTE[detalle]
 
@@ -161,7 +211,8 @@ with tab_calc:
             title=f"{region} - {categoria}: variacion acumulada desde {periodo_inicial}",
             labels={"fecha": "Periodo", "variacion_acumulada_pct": "Variacion acumulada (%)"},
         )
-        st.plotly_chart(fig, use_container_width=True)
+        aplicar_rango_linea(fig, serie["variacion_acumulada_pct"])
+        st.plotly_chart(agregar_labels_linea(fig), use_container_width=True)
         help_expander("grafico_calculadora")
 
         st.dataframe(tabla_variaciones(serie), use_container_width=True, hide_index=True)
@@ -200,17 +251,17 @@ with tab_dash:
 
     c1, c2 = st.columns(2)
     ranking_12 = calcular_ranking(df, fuente_dash, region_dash, hace_12, ultimo_periodo, top=12)
-    c1.plotly_chart(
-        px.bar(
-            ranking_12,
-            x="variacion_pct",
-            y="categoria",
-            orientation="h",
-            title=f"Mayores subas interanuales - {region_dash}",
-            labels={"variacion_pct": "Variacion (%)", "categoria": "Categoria"},
-        ).update_layout(yaxis={"categoryorder": "total ascending"}),
-        use_container_width=True,
+    ranking_fig = px.bar(
+        ranking_12,
+        x="variacion_pct",
+        y="categoria",
+        orientation="h",
+        title=f"Mayores subas interanuales - {region_dash}",
+        labels={"variacion_pct": "Variacion (%)", "categoria": "Categoria"},
     )
+    ranking_fig.update_layout(yaxis={"categoryorder": "total ascending"})
+    ranking_fig.update_xaxes(range=[0, float(ranking_12["variacion_pct"].max()) * 1.18])
+    c1.plotly_chart(agregar_labels_barras(ranking_fig, orientation="h"), use_container_width=True)
 
     regiones_rows = []
     for reg in REGIONES_INDEC:
@@ -220,16 +271,16 @@ with tab_dash:
         except ValueError:
             pass
     regiones_df = pd.DataFrame(regiones_rows)
-    c2.plotly_chart(
-        px.bar(
-            regiones_df.sort_values("variacion_pct"),
-            x="region",
-            y="variacion_pct",
-            title="Interanual por region - Nivel general",
-            labels={"region": "Region", "variacion_pct": "Variacion (%)"},
-        ),
-        use_container_width=True,
+    region_chart_df = regiones_df.sort_values("variacion_pct")
+    region_fig = px.bar(
+        region_chart_df,
+        x="region",
+        y="variacion_pct",
+        title="Interanual por region - Nivel general",
+        labels={"region": "Region", "variacion_pct": "Variacion (%)"},
     )
+    region_fig.update_yaxes(range=rango_eje_con_margen(region_chart_df["variacion_pct"]), zeroline=False)
+    c2.plotly_chart(agregar_labels_barras(region_fig), use_container_width=True)
     help_expander("dashboard")
 
 with tab_comp:
@@ -255,7 +306,7 @@ with tab_comp:
     comp_inicio = p1.selectbox(
         "Desde",
         periodos,
-        index=max(0, len(periodos) - 25),
+        index=max(0, len(periodos) - 13),
         key="comp_inicio",
         help=h("periodo_inicial"),
     )
@@ -291,17 +342,17 @@ with tab_comp:
     if series:
         comp_df = pd.concat(series)
         resumen_df = pd.DataFrame(resumen_rows)
-        st.plotly_chart(
-            px.line(
-                comp_df,
-                x="fecha",
-                y="variacion_acumulada_pct",
-                color="etiqueta",
-                title="Variacion acumulada comparada",
-                labels={"fecha": "Periodo", "variacion_acumulada_pct": "Variacion acumulada (%)", "etiqueta": "Serie"},
-            ),
-            use_container_width=True,
+        comp_fig = px.line(
+            comp_df,
+            x="fecha",
+            y="variacion_acumulada_pct",
+            color="etiqueta",
+            markers=True,
+            title="Variacion acumulada comparada",
+            labels={"fecha": "Periodo", "variacion_acumulada_pct": "Variacion acumulada (%)", "etiqueta": "Serie"},
         )
+        aplicar_rango_linea(comp_fig, comp_df["variacion_acumulada_pct"])
+        st.plotly_chart(normalizar_linea_comparador(comp_fig), use_container_width=True)
         st.dataframe(resumen_df.round(4), use_container_width=True, hide_index=True)
     else:
         st.info("Selecciona al menos una geografia y una categoria con datos disponibles.")

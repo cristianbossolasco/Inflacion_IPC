@@ -64,13 +64,17 @@ Si cambias region, categoria o nivel de detalle, el grafico recalcula el tramo c
         """
 La foto mensual resume el ultimo periodo disponible para el nivel de detalle y region elegidos.
 
-Los KPIs usan el nivel general. El ranking cambia segun el nivel de detalle elegido, y el grafico regional compara el nivel general entre regiones.
+Los KPIs usan el nivel general. El ranking cambia segun el nivel de detalle elegido.
+
+El grafico regional usa escala recortada en el eje Y para que las diferencias entre regiones se vean mejor cuando los valores estan muy cerca.
 """,
     ),
     "comparador": (
         "Como leer el comparador",
         """
 Cada combinacion de geografia y categoria se dibuja como una serie independiente. La linea arranca en 0% para que puedas comparar ritmos, aunque los indices base sean distintos.
+
+Para evitar saturacion visual, el grafico comparativo no muestra etiquetas fijas en cada punto. Usa el cursor sobre la linea y la tabla resumen para leer valores exactos.
 
 Cuando eliges provincias aproximadas, la app usa la region INDEC correspondiente y lo muestra en la tabla resumen.
 """,
